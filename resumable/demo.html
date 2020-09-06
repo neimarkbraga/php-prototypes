@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <script src="resumable.js"></script>
+    <style>
+      #NoSupportError {
+        display: none;
+        color: red;
+      }
+
+      #App {
+        visibility: hidden;
+      }
+
+      #Progress {
+        display: none;
+        margin-top: 15px;
+      }
+
+      #Progress .progress-container {
+        flex: 1 0 auto;
+        align-items: center;
+      }
+
+      #Progress .progress-bar {
+        height: 25px;
+        background-color: green;
+        width: 0;
+        border-radius: 4px;
+      }
+
+      #Progress button {
+        display: none;
+        margin-left: 7px;
+      }
+
+      #DropArea {
+        display: flex;
+        min-height: 300px;
+        align-items: center;
+        justify-content: center;
+        padding: 15px;
+        border: 1px solid black;
+      }
+
+    </style>
+  </head>
+  <body>
+    <div id="NoSupportError">
+      <p>Your browser, unfortunately, is not supported by Resumable.js.</p>
+    </div>
+
+    <div id="App">
+      <div id="DropArea">
+        <p>Drop files here or <a href="#" class="resumable-browse">click here to browse</a>.</p>
+      </div>
+
+      <div id="Progress">
+        <div class="progress-container">
+          <div class="progress-bar"></div>
+        </div>
+
+        <button type="button" class="resumable-resume-btn">Resume</button>
+        <button type="button" class="resumable-pause-btn">Pause</button>
+        <button type="button" class="resumable-cancel-btn">Cancel</button>
+      </div>
+
+      <ul id="FileList"></ul>
+    </div>
+
+    <script>
+
+      var isResumablePaused = false;
+      var resumable = new Resumable({
+        target:'upload.php',
+        forceChunkSize: true,
+        simultaneousUploads: 8,
+        prioritizeFirstAndLastChunk: true,
+        maxFiles: 4,
+        minFileSize: 131072, // 128KB
+        maxFileSize: 16777216,
+        fileType: ['image/jpeg', 'image/gif', 'image/png'],
+        maxChunkRetries: 4,
+        chunkRetryInterval: 15000 // 15 seconds
+      });
+
+      function renderFileList() {
+        document.querySelector('#FileList').innerHTML = '';
+        for (var i = 0; i < resumable.files.length; i++) {
+          var file = resumable.files[i];
+          var li = document.createElement('li');
+
+          li.innerHTML = 'Uploading ';
+          li.innerHTML += file.fileName;
+
+          // file upload has error message
+          if (file.errorMessage) {
+            li.innerHTML += ' (file could not be uploaded: ' + file.errorMessage + ')';
+          }
+
+          // file is uploading
+          else if (file.isUploading()) {
+            li.innerHTML += ' (' + Math.floor(file.progress() * 100) + '%)';
+          }
+
+          // file upload is paused
+          else if (file.isPaused() || isResumablePaused) {
+            li.innerHTML += ' (' + Math.floor(file.progress() * 100) + '% - paused)';
+          }
+
+          // file upload is complete
+          else if (file.isComplete()) {
+            li.innerHTML += ' (complete)';
+          }
+
+          document.querySelector('#FileList').appendChild(li);
+        }
+      }
+
+      (function main() {
+        if(!resumable.support) {
+          document.querySelector('#NoSupportError').style.display = "block";
+          return;
+        }
+        document.querySelector('#App').style.visibility = "visible";
+
+        // mount functionalities
+        resumable.assignDrop(document.querySelector('#DropArea'));
+        resumable.assignBrowse(document.querySelector('.resumable-browse'));
+
+        document
+          .querySelector('.resumable-resume-btn')
+          .addEventListener('click', function () {
+            resumable.upload();
+          });
+
+        document
+          .querySelector('.resumable-pause-btn')
+          .addEventListener('click', function () {
+            resumable.pause();
+          });
+
+        document
+          .querySelector('.resumable-cancel-btn')
+          .addEventListener('click', function () {
+            resumable.cancel();
+          });
+
+        resumable.on('fileAdded', function(file){
+          file.errorMessage = '';
+          renderFileList();
+          resumable.upload();
+        });
+
+        resumable.on('fileProgress', function(file){
+          file.errorMessage = '';
+          renderFileList();
+          document.querySelector('#Progress .progress-bar').style.width = (resumable.progress() * 100) + '%';
+        });
+
+        resumable.on('fileError', function(file, message) {
+          file.errorMessage = message;
+          renderFileList();
+        });
+
+        resumable.on('fileSuccess', function(file, message) {
+          renderFileList();
+        });
+
+        resumable.on('uploadStart', function() {
+          isResumablePaused = false;
+          document.querySelector('#Progress').style.display = 'flex';
+          document.querySelector('.resumable-resume-btn').style.display = 'none';
+          document.querySelector('.resumable-pause-btn').style.display = 'inline-block';
+          document.querySelector('.resumable-cancel-btn').style.display = 'inline-block';
+        });
+
+        resumable.on('pause', function() {
+          isResumablePaused = true;
+          document.querySelector('.resumable-resume-btn').style.display = 'inline-block';
+          document.querySelector('.resumable-pause-btn').style.display = 'none';
+          document.querySelector('.resumable-cancel-btn').style.display = 'inline-block';
+          renderFileList();
+        });
+
+        resumable.on('cancel', function() {
+          document.querySelector('#Progress').style.display = 'none';
+        });
+
+        resumable.on('complete', function() {
+          document.querySelector('#Progress').style.display = 'none';
+        });
+      })();
+    </script>
+  </body>
+</html>
