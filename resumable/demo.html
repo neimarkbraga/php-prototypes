@@ -5,13 +5,10 @@
     <title>Title</title>
     <script src="resumable.js"></script>
     <style>
-      #NoSupportError {
-        display: none;
-        color: red;
-      }
-
-      #App {
-        visibility: hidden;
+      #DropArea {
+        text-align: center;
+        padding: 150px 15px;
+        border: 1px solid black;
       }
 
       #Progress {
@@ -19,60 +16,31 @@
         margin-top: 15px;
       }
 
-      #Progress .progress-container {
-        flex: 1 0 auto;
-        align-items: center;
-      }
-
-      #Progress .progress-bar {
-        height: 25px;
-        background-color: green;
-        width: 0;
-        border-radius: 4px;
-      }
-
       #Progress button {
-        display: none;
         margin-left: 7px;
       }
 
-      #DropArea {
-        display: flex;
-        min-height: 300px;
-        align-items: center;
-        justify-content: center;
-        padding: 15px;
-        border: 1px solid black;
+      #ProgressBar {
+        width: 100%;
+        height: 20px;
       }
-
     </style>
   </head>
   <body>
-    <div id="NoSupportError">
-      <p>Your browser, unfortunately, is not supported by Resumable.js.</p>
+    <div id="DropArea">
+      <p>Drop files here or <a href="#" class="resumable-browse">click here to browse</a>.</p>
     </div>
 
-    <div id="App">
-      <div id="DropArea">
-        <p>Drop files here or <a href="#" class="resumable-browse">click here to browse</a>.</p>
-      </div>
-
-      <div id="Progress">
-        <div class="progress-container">
-          <div class="progress-bar"></div>
-        </div>
-
-        <button type="button" class="resumable-resume-btn">Resume</button>
-        <button type="button" class="resumable-pause-btn">Pause</button>
-        <button type="button" class="resumable-cancel-btn">Cancel</button>
-      </div>
-
-      <ul id="FileList"></ul>
+    <div id="Progress">
+      <progress id="ProgressBar" value="0" max="100"></progress>
+      <button type="button" class="resumable-resume-btn" onclick="resumable.upload()">Resume</button>
+      <button type="button" class="resumable-pause-btn" onclick="resumable.pause()">Pause</button>
+      <button type="button" class="resumable-cancel-btn" onclick="resumable.cancel()">Cancel</button>
     </div>
+
+    <ul id="FileList"></ul>
 
     <script>
-
-      var isResumablePaused = false;
       var resumable = new Resumable({
         target:'upload.php',
         forceChunkSize: true,
@@ -88,107 +56,97 @@
 
       function renderFileList() {
         document.querySelector('#FileList').innerHTML = '';
+
         for (var i = 0; i < resumable.files.length; i++) {
           var file = resumable.files[i];
+          var img = document.createElement('img');
           var li = document.createElement('li');
 
-          li.innerHTML = 'Uploading ';
-          li.innerHTML += file.fileName;
+          img.style.maxWidth = '350px';
+          img.alt = file.fileName;
+          img.src = URL.createObjectURL(file.file);
 
-          // file upload has error message
-          if (file.errorMessage) {
-            li.innerHTML += ' (file could not be uploaded: ' + file.errorMessage + ')';
-          }
-
-          // file is uploading
-          else if (file.isUploading()) {
-            li.innerHTML += ' (' + Math.floor(file.progress() * 100) + '%)';
-          }
-
-          // file upload is paused
-          else if (file.isPaused() || isResumablePaused) {
-            li.innerHTML += ' (' + Math.floor(file.progress() * 100) + '% - paused)';
-          }
-
-          // file upload is complete
-          else if (file.isComplete()) {
-            li.innerHTML += ' (complete)';
-          }
+          li.className = 'resumable-file-' + file.uniqueIdentifier;
+          li.appendChild(img);
+          li.innerHTML += '<br />' + file.fileName;
+          li.innerHTML += '<span class="resumable-upload-status">' + Math.floor(file.progress() * 100) + '</span>';
+          li.innerHTML += '<br /> <br />';
 
           document.querySelector('#FileList').appendChild(li);
         }
       }
 
+      function setFileStatusText(file, statusText) {
+        var status = document.querySelector('.resumable-file-' + file.uniqueIdentifier + ' .resumable-upload-status');
+        if (status) {
+          status.innerHTML = statusText;
+        }
+      }
+
       (function main() {
+
+        // check if browser supports resumable
         if(!resumable.support) {
-          document.querySelector('#NoSupportError').style.display = "block";
+          document.body.style.color = 'red';
+          document.body.innerHTML = 'Your browser, unfortunately, is not supported by Resumable.js.';
           return;
         }
-        document.querySelector('#App').style.visibility = "visible";
 
         // mount functionalities
         resumable.assignDrop(document.querySelector('#DropArea'));
         resumable.assignBrowse(document.querySelector('.resumable-browse'));
 
-        document
-          .querySelector('.resumable-resume-btn')
-          .addEventListener('click', function () {
-            resumable.upload();
-          });
-
-        document
-          .querySelector('.resumable-pause-btn')
-          .addEventListener('click', function () {
-            resumable.pause();
-          });
-
-        document
-          .querySelector('.resumable-cancel-btn')
-          .addEventListener('click', function () {
-            resumable.cancel();
-          });
-
+        // on file added
         resumable.on('fileAdded', function(file){
-          file.errorMessage = '';
           renderFileList();
           resumable.upload();
         });
 
+        // on file upload progress
         resumable.on('fileProgress', function(file){
-          file.errorMessage = '';
-          renderFileList();
-          document.querySelector('#Progress .progress-bar').style.width = (resumable.progress() * 100) + '%';
+          setFileStatusText(file, ' (uploading - ' + Math.floor(file.progress() * 100) + '%)');
+          document.querySelector('#ProgressBar').value = resumable.progress() * 100;
         });
 
+        // on file upload error
         resumable.on('fileError', function(file, message) {
-          file.errorMessage = message;
-          renderFileList();
+          setFileStatusText(file, ' (file could not be uploaded: ' + message + ')');
         });
 
+        // on file upload success
         resumable.on('fileSuccess', function(file, message) {
-          renderFileList();
+          setFileStatusText(file, ' (complete)');
         });
 
+        // on upload started
         resumable.on('uploadStart', function() {
-          isResumablePaused = false;
           document.querySelector('#Progress').style.display = 'flex';
           document.querySelector('.resumable-resume-btn').style.display = 'none';
           document.querySelector('.resumable-pause-btn').style.display = 'inline-block';
           document.querySelector('.resumable-cancel-btn').style.display = 'inline-block';
         });
 
+        // on upload paused
         resumable.on('pause', function() {
-          isResumablePaused = true;
           document.querySelector('.resumable-resume-btn').style.display = 'inline-block';
           document.querySelector('.resumable-pause-btn').style.display = 'none';
           document.querySelector('.resumable-cancel-btn').style.display = 'inline-block';
-          renderFileList();
+
+          for (var i = 0; i < resumable.files.length; i++) {
+            var file = resumable.files[i];
+            if (!file.isComplete()) {
+              setFileStatusText(file, ' (paused - ' + Math.floor(file.progress() * 100) + '%)');
+            }
+          }
         });
 
+        // on upload cancelled
         resumable.on('cancel', function() {
           document.querySelector('#Progress').style.display = 'none';
+          document.querySelector('#FileList').innerHTML = '';
         });
 
+        // on upload complete
         resumable.on('complete', function() {
           document.querySelector('#Progress').style.display = 'none';
         });
